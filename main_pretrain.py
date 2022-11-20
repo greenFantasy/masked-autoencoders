@@ -65,6 +65,8 @@ def get_args_parser():
                         help='learning rate (absolute lr)')
     parser.add_argument('--blr', type=float, default=1e-3, metavar='LR',
                         help='base learning rate: absolute_lr = base_lr * total_batch_size / 256')
+    
+    # Used in utils/lr_sched.py
     parser.add_argument('--min_lr', type=float, default=0., metavar='LR',
                         help='lower lr bound for cyclic schedulers that hit 0')
 
@@ -72,9 +74,8 @@ def get_args_parser():
                         help='epochs to warmup LR')
 
     # Dataset parameters
-    parser.add_argument('--data_path', default='/datasets01/imagenet_full_size/061417/', type=str,
+    parser.add_argument('--data_path', default='../CheXzero/cxr_data/files/', type=str,
                         help='dataset path')
-
     parser.add_argument('--output_dir', default='./output_dir',
                         help='path where to save, empty for no saving')
     parser.add_argument('--log_dir', default='./output_dir',
@@ -87,7 +88,7 @@ def get_args_parser():
 
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
                         help='start epoch')
-    parser.add_argument('--num_workers', default=10, type=int)
+    parser.add_argument('--num_workers', default=4, type=int)
     parser.add_argument('--pin_mem', action='store_true',
                         help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
     parser.add_argument('--no_pin_mem', action='store_false', dest='pin_mem')
@@ -125,7 +126,13 @@ def main(args):
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
-    dataset_train = datasets.ImageFolder(os.path.join(args.data_path, 'train'), transform=transform_train)
+    
+    def is_valid_file(path):
+        if path.split(".")[-1] != "jpg":
+            return False
+        return True # TODO: Ignore files in checkpoints
+
+    dataset_train = datasets.ImageFolder(args.data_path, transform=transform_train, is_valid_file=is_valid_file)
     print(dataset_train)
 
     if True:  # args.distributed:
@@ -158,9 +165,11 @@ def main(args):
     model.to(device)
 
     model_without_ddp = model
-    print("Model = %s" % str(model_without_ddp))
+    # TODO: Add argument to print or not print model
+    # print("Model = %s" % str(model_without_ddp))
 
     eff_batch_size = args.batch_size * args.accum_iter * misc.get_world_size()
+    print(f"Effective batch size: {eff_batch_size}")
     
     if args.lr is None:  # only base_lr is specified
         args.lr = args.blr * eff_batch_size / 256
